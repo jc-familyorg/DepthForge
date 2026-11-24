@@ -124,21 +124,31 @@ export async function getDepthPipeline(onProgress: ProgressCallback): Promise<{
   backend: Backend;
   pipe: DepthEstimationPipeline;
 }> {
-  // TEMPORARY TEST: Force WASM, bypassing WebGPU.
-  if (cached?.backend !== 'wasm') {
-    cached = null;
-  }
-
   if (cached) {
     onProgress({
       stage: 'initializing',
       progress: null,
-      message: 'WASM model already loaded',
-      backend: 'wasm',
+      message: 'Model already loaded',
+      backend: cached.backend,
     });
     return cached;
   }
 
+  // Attempt WebGPU first.
+  try {
+    const pipe = await createPipeline('webgpu', onProgress);
+    cached = { backend: 'webgpu', pipe };
+    return cached;
+  } catch {
+    onProgress({
+      stage: 'initializing',
+      progress: null,
+      message: 'WebGPU unavailable, falling back to WASM',
+      backend: 'wasm',
+    });
+  }
+
+  // Fallback to WASM.
   try {
     const pipe = await createPipeline('wasm', onProgress);
     cached = { backend: 'wasm', pipe };
@@ -148,7 +158,7 @@ export async function getDepthPipeline(onProgress: ProgressCallback): Promise<{
     onProgress({
       stage: 'error',
       progress: null,
-      message: 'WASM model loading failed',
+      message: 'Model loading or inference failed',
       backend: null,
       error: err instanceof Error ? err.message : String(err),
     });
